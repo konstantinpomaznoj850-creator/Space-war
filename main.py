@@ -7,11 +7,15 @@ import asyncio
 
 pygame.init()
 
-try:
-    pygame.mixer.init()
-    AUDIO_OK = True
-except:
+# В Pygbag на мобильных браузерах звук часто вешает игру, поэтому отключаем его для веба
+if sys.platform == "emscripten":
     AUDIO_OK = False
+else:
+    try:
+        pygame.mixer.init()
+        AUDIO_OK = True
+    except:
+        AUDIO_OK = False
 
 def load_sound(filename):
     if not AUDIO_OK: return None
@@ -327,6 +331,7 @@ def reset_game():
     global score, wave, current_kills, shoot_delay, bullet_damage, weapon_level, enemy_spawn_delay, boss, boss_max_hp, bombs
     global bullets, enemies, powerups, enemy_bullets, particles, player, player_hp, player_max_hp, invulnerable_timer, run_coins
     global current_weapon, laser_start_time, laser_damage_timer, pause_time, shield_timer, regen_timer
+    global last_shot_time, last_enemy_spawn
     score = 0; wave = 1; current_kills = 0; run_coins = 0
     bullets.clear(); enemies.clear(); powerups.clear(); enemy_bullets.clear(); particles.clear()
     boss = None; boss_max_hp = 0
@@ -349,6 +354,10 @@ def reset_game():
     invulnerable_timer = 0
     player.center = (WIDTH // 2, HEIGHT - 150)
     pause_time = 0
+    
+    # Сбрасываем таймеры, чтобы не было мгновенных выстрелов при старте
+    last_shot_time = pygame.time.get_ticks()
+    last_enemy_spawn = 0
 
 def draw_text(text, font, color, x, y, align="center"):
     surf = font.render(text, True, color)
@@ -407,19 +416,26 @@ async def main():
     global achievement_popup, popup_timer
     global coins, unlocked_ships, equipped_ship, upgrade_levels, lang, gfx_high
 
+    is_dragging = False
+
     while True:
         current_time = pygame.time.get_ticks()
         mx, my = pygame.mouse.get_pos()
 
-        # Управление кораблем
-        if state == "PLAY" and pygame.mouse.get_pressed()[0]:
-            px = max(player.width//2, min(mx, WIDTH - player.width//2))
-            py = max(ZONE_Y + player.height//2, min(my, HEIGHT - player.height//2))
-            player.center = (px, py)
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 save_data(); pygame.quit(); sys.exit()
+
+            # Управление пальцем/мышью
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                is_dragging = True
+            elif event.type == pygame.MOUSEBUTTONUP:
+                is_dragging = False
+            elif event.type == pygame.MOUSEMOTION and is_dragging:
+                if state == "PLAY":
+                    px = max(player.width//2, min(event.pos[0], WIDTH - player.width//2))
+                    py = max(ZONE_Y + player.height//2, min(event.pos[1], HEIGHT - player.height//2))
+                    player.center = (px, py)
 
             if event.type == pygame.MOUSEBUTTONDOWN:
                 dist_to_bomb = math.hypot(event.pos[0] - bomb_center[0], event.pos[1] - bomb_center[1])
